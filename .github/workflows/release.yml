@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: |
+          go test -race ./...
+          go vet ./...
+      - name: Build Linux binaries
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+        run: |
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            GOARCH="$arch" go build -trimpath -o "dist/plugin-linux-$arch" .
+          done
+      - name: Generate checksums and catalog
+        run: go run ./cmd/catalog -tag "$RELEASE_TAG" -dist dist
+      - name: Publish release assets
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > /tmp/release-is-draft; then
+            if [[ "$(cat /tmp/release-is-draft)" == 'false' ]]; then
+              # A rerun may repair the catalog, but must not replace released binaries.
+              mkdir -p dist/published
+              gh release download "$RELEASE_TAG" -p checksums.txt -p catalog.json -D dist/published
+              cmp dist/checksums.txt dist/published/checksums.txt
+              cmp dist/catalog.json dist/published/catalog.json
+            else
+              gh release upload "$RELEASE_TAG" dist/plugin-linux-* dist/checksums.txt dist/catalog.json --clobber
+              gh release edit "$RELEASE_TAG" --draft=false --latest
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Yambridge $RELEASE_TAG" --generate-notes \
+              dist/plugin-linux-* dist/checksums.txt dist/catalog.json
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi
+      - name: Update the Silo repository index
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          # Never move the catalog backwards if an older tag is rebuilt later.
+          python3 - <<'PY'
+          import json, pathlib, shutil
+          incoming = pathlib.Path('dist/catalog.json')
+          current = pathlib.Path('catalog.json')
+          def version(path):
+              return tuple(map(int, json.loads(path.read_text())['plugins'][0]['manifest']['version'].split('.')))
+          if not current.exists() or version(incoming) >= version(current):
+              shutil.copyfile(incoming, current)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add catalog.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Silo catalog for $RELEASE_TAG"
+            git push origin HEAD:main
+          fi

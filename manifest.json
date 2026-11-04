@@ -1,0 +1,54 @@
+{
+  "plugin_id": "community.yambridge",
+  "version": "0.2.0",
+  "checksum": "__CHECKSUM__",
+  "silo_api_version": "v1",
+  "supported_platforms": [
+    {"os": "linux", "arch": "amd64"},
+    {"os": "linux", "arch": "arm64"}
+  ],
+  "presentation": {
+    "display_name": "Yambridge",
+    "summary": "Send new completed watches from Silo to Yamtrack.",
+    "description_markdown": "Sends newly completed movies and episodes to Yamtrack immediately on playback stop, with scheduled export as a fallback. Shared watch-history IDs prevent duplicate live and scheduled deliveries. Optional TMDB lookup resolves missing episode IDs from the show and episode numbering.",
+    "setup_markdown": "Mount a writable persistent directory at /var/lib/yambridge in the Silo container. Connect your profile with the complete Yamtrack Jellyfin webhook URL as the API key. Enable Send watched changes and Scrobble playback. For episodes missing TVDB/IMDb IDs, add a TMDB API Read Access Token in this plugin's settings. Existing connections do not need to reconnect. See README for setup and limitations.",
+    "homepage_url": "https://github.com/neilsb/silo-plugin-yamtrack",
+    "source_url": "https://github.com/neilsb/silo-plugin-yamtrack",
+    "support_url": "https://github.com/neilsb/silo-plugin-yamtrack/issues",
+    "changelog_url": "https://github.com/neilsb/silo-plugin-yamtrack/releases",
+    "publisher_name": "neilsb",
+    "publisher_url": "https://github.com/neilsb",
+    "license_spdx": "NOASSERTION"
+  },
+  "category": "Watch Providers",
+  "global_config_schema": [{
+    "key": "tmdb",
+    "title": "Episode ID lookup (optional)",
+    "description": "Resolve missing episode TVDB/IMDb IDs using TMDB show identity and season/episode numbers. Not needed for movies or episodes already carrying those IDs.",
+    "json_schema": "{\"type\":\"object\",\"properties\":{\"read_token\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+    "admin_form": {
+      "submit_label": "Save episode lookup settings",
+      "fields": [{
+        "key": "read_token",
+        "label": "TMDB API Read Access Token",
+        "description": "Optional bearer token from your TMDB account's API settings. Use the API Read Access Token, not the v3 API key. Sent only to api.themoviedb.org.",
+        "control": "ADMIN_FORM_CONTROL_PASSWORD",
+        "secret": true
+      }]
+    }
+  }],
+  "capabilities": [{
+    "type": "watch_sync_provider.v1",
+    "id": "yamtrack",
+    "display_name": "Yamtrack (Yambridge)",
+    "description": "Paste your complete Yamtrack Jellyfin webhook URL in the API key field.",
+    "watch_sync_provider": {
+      "auth_methods": ["WATCH_SYNC_AUTH_METHOD_API_KEY"],
+      "export_watched": true,
+      "scrobble_playback": true,
+      "supported_media_types": ["WATCH_SYNC_MEDIA_TYPE_MOVIE", "WATCH_SYNC_MEDIA_TYPE_EPISODE"],
+      "external_id_namespaces": ["tmdb", "imdb", "tvdb"],
+      "max_batch_size": 1
+    }
+  }]
+}
